@@ -1,7 +1,8 @@
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
+
 import {
   Activity,
   AlertTriangle,
@@ -18,9 +19,25 @@ import {
   Waves,
   Building2,
   Crosshair,
+  ShieldCheck,
+  Truck,
 } from "lucide-react";
+
 import "./App.css";
 
+import "./App.css";
+const API_URL = "http://127.0.0.1:8000";
+const checkBackend = async () => {
+  try {
+    const response = await fetch("http://127.0.0.1:8000/health");
+    const data = await response.json();
+
+    setBackendStatus(data.status);
+  } catch (error) {
+    console.error("Backend Connection Failed:", error);
+    setBackendStatus("offline");
+  }
+};
 function FloodZone() {
   const waterRef = useRef();
   const rippleRef = useRef();
@@ -224,56 +241,77 @@ const incidents = [
 ];
 
 function App() {
-  const [activeTab, setActiveTab] = useState("Overview");
-
-  const [alertStatus, setAlertStatus] = useState({
-    "INC-001": "PENDING",
-    "INC-002": "PENDING",
-    "INC-003": "PENDING"
-  });
-
-  const updateAlertStatus = (id, status) => {
-    setAlertStatus((previous) => ({
-      ...previous,
-      [id]: status
-    }));
-  };
-
-    const [rescueTeams, setRescueTeams] = useState([
+  const [rescueTeams, setRescueTeams] = useState([
   {
     id: "TEAM-01",
     name: "Alpha Rescue Team",
     zone: "North Zone",
     members: 6,
+    incident: "INC-001",
     status: "ON MISSION",
-    incident: "INC-001"
   },
   {
     id: "TEAM-02",
     name: "Bravo Rescue Team",
     zone: "East Zone",
     members: 5,
+    incident: "None",
     status: "AVAILABLE",
-    incident: "None"
   },
   {
     id: "TEAM-03",
     name: "Charlie Rescue Team",
     zone: "Central Zone",
     members: 8,
+    incident: "None",
     status: "AVAILABLE",
-    incident: "None"
-  }
+  },
 ]);
 const updateTeamStatus = (id, status) => {
-  setRescueTeams((previous) =>
-    previous.map((team) =>
-      team.id === id ? { ...team, status } : team
+  setRescueTeams((teams) =>
+    teams.map((team) =>
+      team.id === id
+        ? {
+            ...team,
+            status,
+            incident: status === "AVAILABLE" ? "None" : "INC-001",
+          }
+        : team
     )
   );
 };
+  const [activeTab, setActiveTab] = useState("Overview");
+  
+  const [backendStatus, setBackendStatus] = useState("Checking...");
+  const [alertStatus, setAlertStatus] = useState({
+    "INC-001": "PENDING",
+    "INC-002": "PENDING",
+    "INC-003": "PENDING"
+  });
+  const updateAlertStatus = (id, status) => {
+  setAlertStatus((prev) => ({
+    ...prev,
+    [id]: status,
+  }));
+};
+
   const [selectedIncident, setSelectedIncident] = useState(incidents[0]);
   const [alerts, setAlerts] = useState(true);
+
+  const checkBackend = async () => {
+    try {
+      const response = await fetch(`${API_URL}/health`);
+      const data = await response.json();
+      setBackendStatus(data.status);
+    } catch (error) {
+      console.error("Backend Connection Failed:", error);
+      setBackendStatus("offline");
+    }
+  };
+
+  useEffect(() => {
+    checkBackend();
+  }, []);
 
   return (
     <div className="dashboard">
@@ -324,7 +362,13 @@ const updateTeamStatus = (id, status) => {
 
           <div className="top-actions">
             <div className="live-indicator">
-              <span className="status-dot" /> SIMULATION MODE
+              <span
+  className="status-dot"
+  style={{
+    backgroundColor: backendStatus === "healthy" ? "#16a34a" : "#dc2626"
+  }}
+/>
+{backendStatus === "healthy" ? "BACKEND CONNECTED" : "BACKEND OFFLINE"}
             </div>
             <button
               className="icon-button"
@@ -337,7 +381,221 @@ const updateTeamStatus = (id, status) => {
             <div className="profile">DR</div>
           </div>
         </header>
-        {activeTab === "Emergency Alerts" ? (
+        {activeTab === "Overview" ? (
+  <section className="overview-page">
+    <div className="panel-header">
+      <div>
+        <h3><Activity size={20} /> DISASTER OVERVIEW</h3>
+        <small>REAL-TIME RESPONSE SUMMARY</small>
+      </div>
+    </div>
+
+    <div className="overview-stats">
+  <div className="overview-card">
+    <div className="overview-card-icon cyan">
+      <div className="overview-card-icon cyan">
+  <AlertTriangle size={22} />
+</div>
+    </div>
+    <span>Total Incidents</span>
+    <h2>{incidents.length}</h2>
+    <small>All reported incidents</small>
+  </div>
+
+  <div className="overview-card">
+    <div className="overview-card-icon red">
+      <div className="overview-card-icon red">
+  <ShieldCheck size={22} />
+</div>
+    </div>
+    <span>Active Emergencies</span>
+    <h2>
+      {incidents.filter(
+        (incident) => alertStatus[incident.id] !== "RESOLVED"
+      ).length}
+    </h2>
+    <small>Awaiting resolution</small>
+  </div>
+
+  <div className="overview-card">
+    <div className="overview-card-icon blue">
+      <div className="overview-card-icon blue">
+  <Users size={22} />
+</div>
+    </div>
+    <span>Rescue Teams</span>
+    <h2>{rescueTeams.length}</h2>
+    <small>Registered response teams</small>
+  </div>
+
+  <div className="overview-card">
+    <div className="overview-card-icon purple">
+      <div className="overview-card-icon purple">
+  <Truck size={22} />
+</div>
+    </div>
+    <span>Teams on Mission</span>
+    <h2>
+      {rescueTeams.filter(
+        (team) => team.status === "ON MISSION"
+      ).length}
+    </h2>
+    <small>Currently deployed</small>
+  </div>
+</div>
+
+
+    
+    
+    <div className="overview-bottom">
+      {/* Recent Incidents */}
+      <div className="overview-panel">
+        <div className="overview-panel-header">
+          <h3>Recent Incidents</h3>
+          <span>{incidents.length} Total</span>
+        </div>
+
+        {incidents.slice(0, 5).map((incident) => (
+  <div
+  className="recent-incident"
+  key={incident.id}
+  onClick={() => setSelectedIncident(incident)}
+  style={{ cursor: "pointer" }}
+>
+    <div className="recent-incident-info">
+      <div className="recent-incident-icon">
+        {incident.name.toLowerCase().includes("fire") ? (
+          <Flame size={20} />
+        ) : incident.name.toLowerCase().includes("flood") ? (
+          <Waves size={20} />
+        ) : (
+          <AlertTriangle size={20} />
+        )}
+      </div>
+
+      <div>
+        <strong>{incident.name}</strong>
+        <p>{incident.location}</p>
+      </div>
+    </div>
+
+    <span className={`incident-priority ${incident.level.toLowerCase()}`}>
+      {incident.level}
+    </span>
+  </div>
+))}
+      </div>
+
+      {/* Rescue Team Status */}
+      <div className="overview-panel">
+        <div className="overview-panel-header">
+          <h3>Rescue Team Status</h3>
+          <span>{rescueTeams.length} Teams</span>
+        </div>
+
+        <div className="team-status-row">
+  <span className="team-status-label">
+    <span className="team-status-dot available"></span>
+    Available Teams
+  </span>
+
+  <strong>
+    {rescueTeams.filter(
+      (team) => team.status !== "ON MISSION"
+    ).length}
+  </strong>
+</div>
+
+<div className="team-status-row">
+  <span className="team-status-label">
+    <span className="team-status-dot mission"></span>
+    Teams on Mission
+  </span>
+
+  <strong>
+    {rescueTeams.filter(
+      (team) => team.status === "ON MISSION"
+    ).length}
+  </strong>
+</div>
+</div>
+</div>
+{selectedIncident && (
+  <div
+    className="incident-modal-overlay"
+    onClick={() => setSelectedIncident(null)}
+  >
+    <div
+      className="incident-modal"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        className="incident-modal-close"
+        onClick={() => setSelectedIncident(null)}
+      >
+        ×
+      </button>
+
+      <h2>{selectedIncident.name}</h2>
+
+      <p>
+        <strong>Location:</strong> {selectedIncident.location}
+      </p>
+
+      <p>
+        <strong>Priority:</strong> {selectedIncident.level}
+      </p>
+
+      <p>
+        <strong>Incident ID:</strong> {selectedIncident.id}
+      </p>
+
+      <button
+        className="incident-modal-button"
+        onClick={() => setSelectedIncident(null)}
+      >
+        Close
+      </button>
+    </div>
+  </div>
+)}
+    <div className="activity-panel">
+      <div className="overview-panel-header">
+        <h3>Disaster Activity Timeline</h3>
+        <span>Recent Updates</span>
+      </div>
+
+      <div className="activity-item">
+        <span className="activity-dot red"></span>
+        <div>
+          <strong>Urban Fire Alert</strong>
+          <p>High priority incident detected in Sector 04</p>
+          <small>Emergency response required</small>
+        </div>
+      </div>
+
+      <div className="activity-item">
+        <span className="activity-dot orange"></span>
+        <div>
+          <strong>Flood Warning</strong>
+          <p>Flood alert reported in Riverfront area</p>
+          <small>Monitoring ongoing</small>
+        </div>
+      </div>
+
+      <div className="activity-item">
+        <span className="activity-dot green"></span>
+        <div>
+          <strong>Rescue Team Deployment</strong>
+          <p>Rescue teams currently assigned to missions</p>
+          <small>Deployment status</small>
+        </div>
+      </div>
+    </div>
+
+  </section>
+) : activeTab === "Emergency Alerts" ? (
+  
   <section className="alerts-page">
     <div className="panel-header">
       <div>
