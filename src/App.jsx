@@ -23,7 +23,6 @@ import {
   Truck,
 } from "lucide-react";
 
-import "./App.css";
 
 import "./App.css";
 const API_URL = "http://127.0.0.1:8000";
@@ -215,31 +214,6 @@ function CityScene() {
     </>
   );
 }
-
-const incidents = [
-  {
-    id: "INC-001",
-    name: "Urban Fire Alert",
-    location: "Sector 04 · North Zone",
-    level: "HIGH",
-    icon: Flame,
-  },
-  {
-    id: "INC-002",
-    name: "Flood Warning",
-    location: "Riverfront · East Zone",
-    level: "MEDIUM",
-    icon: Waves,
-  },
-  {
-    id: "INC-003",
-    name: "Building Assessment",
-    location: "Central District",
-    level: "LOW",
-    icon: Building2,
-  },
-];
-
 function App() {
   const [rescueTeams, setRescueTeams] = useState([
   {
@@ -267,6 +241,50 @@ function App() {
     status: "AVAILABLE",
   },
 ]);
+  const [incidents, setIncidents] = useState([]);
+const [loadingIncidents, setLoadingIncidents] = useState(true);
+const [incidentError, setIncidentError] = useState("");
+
+const fetchIncidents = async () => {
+  try {
+    setLoadingIncidents(true);
+    setIncidentError("");
+
+    const response = await fetch(`${API_URL}/incidents`);
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch incidents");
+    }
+
+    const data = await response.json();
+
+     
+
+    const mappedIncidents = data.map((incident) => ({
+      ...incident,
+      name: incident.title,
+      level: incident.severity,
+      icon: incident.title.toLowerCase().includes("fire")
+        ? Flame
+        : incident.title.toLowerCase().includes("flood")
+        ? Waves
+        : Building2,
+    }));
+
+    setIncidents(mappedIncidents);
+    setSelectedIncident(mappedIncidents[0] || null);
+  } catch (error) {
+    console.error("Incident Fetch Error:", error);
+    setIncidentError("Unable to load incidents from backend.");
+  } finally {
+    setLoadingIncidents(false);
+  }
+};
+
+useEffect(() => {
+  fetchIncidents();
+}, []);
+
 const updateTeamStatus = (id, status) => {
   setRescueTeams((teams) =>
     teams.map((team) =>
@@ -283,20 +301,12 @@ const updateTeamStatus = (id, status) => {
   const [activeTab, setActiveTab] = useState("Overview");
   
   const [backendStatus, setBackendStatus] = useState("Checking...");
-  const [alertStatus, setAlertStatus] = useState({
-    "INC-001": "PENDING",
-    "INC-002": "PENDING",
-    "INC-003": "PENDING"
-  });
-  const updateAlertStatus = (id, status) => {
-  setAlertStatus((prev) => ({
-    ...prev,
-    [id]: status,
-  }));
-};
-
-  const [selectedIncident, setSelectedIncident] = useState(incidents[0]);
-  const [alerts, setAlerts] = useState(true);
+  const [alerts, setAlerts] = useState([]);
+const [loadingAlerts, setLoadingAlerts] = useState(true);
+const [alertError, setAlertError] = useState("");
+const [showNotifications, setShowNotifications] = useState(false);
+const [selectedIncident, setSelectedIncident] = useState(null);
+  
 
   const checkBackend = async () => {
     try {
@@ -308,10 +318,58 @@ const updateTeamStatus = (id, status) => {
       setBackendStatus("offline");
     }
   };
+const fetchAlerts = async () => {
+  try {
+    setLoadingAlerts(true);
+    setAlertError("");
 
-  useEffect(() => {
-    checkBackend();
-  }, []);
+    const response = await fetch(`${API_URL}/alerts`);
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch alerts");
+    }
+
+    const data = await response.json();
+    setAlerts(data);
+
+  } catch (error) {
+    console.error("Alert Fetch Error:", error);
+    setAlertError("Unable to load alerts from backend.");
+  } finally {
+    setLoadingAlerts(false);
+  }
+};
+const updateAlertStatus = async (alertId, status) => {
+  try {
+    const response = await fetch(`${API_URL}/alerts/${alertId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ status }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to update alert");
+    }
+
+    const updatedAlert = await response.json();
+
+    setAlerts((previousAlerts) =>
+      previousAlerts.map((item) =>
+        item.id === alertId ? updatedAlert : item
+      )
+    );
+
+  } catch (error) {
+    console.error("Alert Update Error:", error);
+    setAlertError("Unable to update alert status.");
+  }
+};
+ useEffect(() => {
+  checkBackend();
+  fetchAlerts();
+}, []);
 
   return (
     <div className="dashboard">
@@ -372,11 +430,11 @@ const updateTeamStatus = (id, status) => {
             </div>
             <button
               className="icon-button"
-              onClick={() => setAlerts(!alerts)}
+              onClick={() => setShowNotifications(!showNotifications)}
               title="Toggle notifications"
             >
               <Bell size={20} />
-              {alerts && <span className="notification-dot" />}
+              {showNotifications && <span className="notification-dot" />}
             </button>
             <div className="profile">DR</div>
           </div>
@@ -410,9 +468,13 @@ const updateTeamStatus = (id, status) => {
     </div>
     <span>Active Emergencies</span>
     <h2>
-      {incidents.filter(
-        (incident) => alertStatus[incident.id] !== "RESOLVED"
-      ).length}
+      {incidents.filter((incident) => {
+  const relatedAlert = alerts.find(
+    (alert) => alert.incident_id === incident.id
+  );
+
+  return !relatedAlert || relatedAlert.status !== "RESOLVED";
+}).length}
     </h2>
     <small>Awaiting resolution</small>
   </div>
@@ -604,84 +666,97 @@ const updateTeamStatus = (id, status) => {
         </h3>
         <small>ALL SIMULATED DISASTER ALERTS</small>
       </div>
-      <span className="count-badge">{incidents.length}</span>
+      <span className="count-badge">{alerts.length}</span>
     </div>
 <div className="alert-stats">
   <div className="alert-stat pending">
     <span>Pending</span>
     <strong>
-      {Object.values(alertStatus).filter(
-        (status) => status === "PENDING"
-      ).length}
+     {alerts.filter((alert) => alert.status === "PENDING").length}
     </strong>
   </div>
 
   <div className="alert-stat acknowledged">
     <span>Acknowledged</span>
     <strong>
-      {Object.values(alertStatus).filter(
-        (status) => status === "ACKNOWLEDGED"
-      ).length}
+      {alerts.filter((alert) => alert.status === "ACKNOWLEDGED").length}
     </strong>
   </div>
 
   <div className="alert-stat resolved">
     <span>Resolved</span>
     <strong>
-      {Object.values(alertStatus).filter(
-        (status) => status === "RESOLVED"
-      ).length}
+      {alerts.filter((alert) => alert.status === "RESOLVED").length}
     </strong>
   </div>
 </div>
     <div className="alert-list">
 
-      {incidents.map((incident) => {
-        const Icon = incident.icon;
+      
+      {loadingAlerts ? (
+        <p>Loading alerts from backend...</p>
+      ) : alertError ? (
+        <p>{alertError}</p>
+      ) : alerts.length === 0 ? (
+        <p>No emergency alerts available.</p>
+      ) : (
+        alerts.map((alert) => {
+          const relatedIncident = incidents.find(
+            (incident) => incident.id === alert.incident_id
+          );
 
-        return (
-          <div
-            key={incident.id}
-            className={`alert-card ${incident.level.toLowerCase()}`}
-          >
-            <div className="alert-icon">
-              <Icon size={24} />
+          return (
+            <div
+              key={alert.id}
+              className={`alert-card ${alert.severity.toLowerCase()}`}
+            >
+              <div className="alert-icon">
+                <Bell size={24} />
+              </div>
+
+              <div className="alert-info">
+                <strong>{alert.title}</strong>
+
+                <p>{alert.message}</p>
+
+                <span className={`severity ${alert.severity.toLowerCase()}`}>
+                  {alert.severity} PRIORITY
+                </span>
+
+                <small>Alert ID: {alert.id}</small>
+                <small>Incident ID: {alert.incident_id}</small>
+
+                {relatedIncident && (
+                  <small>Location: {relatedIncident.location}</small>
+                )}
+
+                <strong>STATUS: {alert.status}</strong>
+
+                <div className="alert-actions">
+                  <button
+                    onClick={() =>
+                      updateAlertStatus(alert.id, "ACKNOWLEDGED")
+                    }
+                    disabled={alert.status !== "PENDING"}
+                  >
+                    Acknowledge
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      updateAlertStatus(alert.id, "RESOLVED")
+                    }
+                    disabled={alert.status === "RESOLVED"}
+                  >
+                    Resolve
+                  </button>
+                </div>
+              </div>
             </div>
+          );
+        })
+      )}
 
-            <div className="alert-info">
-              <strong>{incident.name}</strong>
-              <p>{incident.location}</p>
-              <span className={`severity ${incident.level.toLowerCase()}`}>
-                {incident.level} PRIORITY
-              </span>
-              <small>Incident ID: {incident.id}</small>
-              <strong>
-  STATUS: {alertStatus[incident.id]}
-</strong>
-
-<div className="alert-actions">
-  <button
-    onClick={() =>
-      updateAlertStatus(incident.id, "ACKNOWLEDGED")
-    }
-    disabled={alertStatus[incident.id] !== "PENDING"}
-  >
-    Acknowledge
-  </button>
-
-  <button
-    onClick={() =>
-      updateAlertStatus(incident.id, "RESOLVED")
-    }
-    disabled={alertStatus[incident.id] === "RESOLVED"}
-  >
-    Resolve
-  </button>
-</div>
-            </div>
-          </div>
-        );
-      })}
     </div>
   </section>
 ) : activeTab === "Rescue Teams" ? (
