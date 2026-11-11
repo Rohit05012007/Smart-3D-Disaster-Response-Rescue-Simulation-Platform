@@ -34,3 +34,6 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+# Local database files
+backend/*.db
